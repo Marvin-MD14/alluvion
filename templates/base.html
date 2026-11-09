@@ -1,0 +1,500 @@
+<!-- templates/base.html -->
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project Alluvion - Flood Hazard Mapping</title>
+
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css">
+
+    <!-- Apply saved sidebar state BEFORE render para walang flicker -->
+    <script>
+        (function () {
+            try {
+                if (window.innerWidth >= 992 && localStorage.getItem('alluvion_sidebar') === 'collapsed') {
+                    document.documentElement.classList.add('sb-collapsed');
+                }
+            } catch (e) {}
+        })();
+    </script>
+
+    <style>
+        :root {
+            --primary-blue: #0066cc;
+            --primary-yellow: #ffc107;
+            --sidebar-bg: #0f172a;
+            --sidebar-hover: #1e293b;
+            --sidebar-w: 260px;
+            --sidebar-w-collapsed: 80px;
+            --bg-light: #f1f5f9;
+            --text-dark: #1e293b;
+        }
+        * { box-sizing: border-box; }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-light);
+            overflow-x: hidden;
+        }
+
+        /* ================= SIDEBAR ================= */
+        .sidebar {
+            width: var(--sidebar-w);
+            height: 100vh;
+            position: fixed;
+            top: 0; left: 0;
+            background-color: var(--sidebar-bg);
+            color: #fff;
+            z-index: 1050;
+            box-shadow: 4px 0 10px rgba(0,0,0,0.1);
+            transition: width .3s ease, transform .3s ease;
+            overflow-x: hidden;
+            overflow-y: auto;
+            white-space: nowrap;
+        }
+        .sidebar::-webkit-scrollbar { width: 0; }
+
+        .sidebar .brand {
+            height: 70px;
+            padding: 0 28px;
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: var(--primary-yellow);
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            overflow: hidden;
+        }
+        .sidebar .brand i { width: 24px; text-align: center; flex-shrink: 0; }
+
+        .sidebar .menu-label {
+            padding: 18px 28px 6px;
+            font-size: .68rem;
+            letter-spacing: .08em;
+            text-transform: uppercase;
+            color: #64748b;
+            font-weight: 600;
+            overflow: hidden;
+        }
+
+        .sidebar .nav-link {
+            position: relative;
+            color: #94a3b8;
+            height: 50px;
+            padding: 0 28px;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            border-left: 4px solid transparent;
+            transition: background .2s, color .2s, border-color .2s;
+        }
+        .sidebar .nav-link i {
+            width: 24px;
+            text-align: center;
+            font-size: 1.1rem;
+            flex-shrink: 0;
+        }
+        .sidebar .nav-link:hover { background: var(--sidebar-hover); color: #fff; }
+        .sidebar .nav-link.active {
+            background: var(--sidebar-hover);
+            color: #fff;
+            border-left-color: var(--primary-blue);
+        }
+        .sidebar .nav-link.active i { color: var(--primary-yellow); }
+
+        /* Collapsed state */
+        html.sb-collapsed .sidebar,
+        .sidebar.collapsed { width: var(--sidebar-w-collapsed); }
+
+        html.sb-collapsed .sidebar .nav-text,
+        html.sb-collapsed .sidebar .brand-text,
+        html.sb-collapsed .sidebar .menu-label,
+        .sidebar.collapsed .nav-text,
+        .sidebar.collapsed .brand-text,
+        .sidebar.collapsed .menu-label { display: none; }
+
+        .sidebar-footer {
+            position: absolute;
+            bottom: 0; left: 0; right: 0;
+            padding: 14px 28px;
+            font-size: .72rem;
+            color: #475569;
+            border-top: 1px solid rgba(255,255,255,0.06);
+            overflow: hidden;
+        }
+        html.sb-collapsed .sidebar-footer,
+        .sidebar.collapsed .sidebar-footer { display: none; }
+
+        /* ================= MAIN ================= */
+        .main-content {
+            margin-left: var(--sidebar-w);
+            padding: 20px 30px;
+            min-height: 100vh;
+            transition: margin-left .3s ease;
+        }
+        html.sb-collapsed .main-content,
+        .main-content.expanded { margin-left: var(--sidebar-w-collapsed); }
+
+        /* ================= TOPBAR ================= */
+        .topbar {
+            position: sticky;
+            top: 12px;
+            z-index: 1040;
+            background: #fff;
+            padding: 12px 25px;
+            border-radius: 16px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.04);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+        }
+        .icon-btn {
+            position: relative;
+            width: 42px; height: 42px;
+            border-radius: 12px;
+            border: none;
+            background: #f8fafc;
+            color: #64748b;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.1rem;
+            transition: .2s;
+        }
+        .icon-btn:hover, .icon-btn.show { background: #e8f1fb; color: var(--primary-blue); }
+        .icon-btn::after { display: none !important; }
+        .notif-dot {
+            position: absolute;
+            top: 9px; right: 10px;
+            width: 10px; height: 10px;
+            background: #ef4444;
+            border-radius: 50%;
+            border: 2px solid #fff;
+        }
+
+        /* Dropdown */
+        .dropdown-menu.pro-menu {
+            border: none;
+            border-radius: 16px;
+            box-shadow: 0 12px 40px rgba(15,23,42,.15);
+            padding: 0;
+            margin-top: 14px !important;
+            overflow: hidden;
+        }
+
+        /* Notifications */
+        .notif-menu { width: 360px; max-width: 92vw; }
+        .notif-head {
+            padding: 14px 18px;
+            display: flex; justify-content: space-between; align-items: center;
+            border-bottom: 1px solid #eef2f7;
+        }
+        .notif-list { max-height: 320px; overflow-y: auto; }
+        .notif-list::-webkit-scrollbar { width: 6px; }
+        .notif-list::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 6px; }
+        .notif-item {
+            display: flex; gap: 12px;
+            padding: 12px 18px;
+            text-decoration: none;
+            color: var(--text-dark);
+            border-bottom: 1px solid #f1f5f9;
+            transition: background .15s;
+        }
+        .notif-item:hover { background: #f8fafc; color: var(--text-dark); }
+        .notif-icon {
+            width: 38px; height: 38px;
+            border-radius: 10px;
+            background: rgba(0,102,204,.1);
+            color: var(--primary-blue);
+            display: flex; align-items: center; justify-content: center;
+            flex-shrink: 0;
+        }
+        .notif-footer {
+            display: block;
+            text-align: center;
+            padding: 12px;
+            font-weight: 600;
+            font-size: .85rem;
+            color: var(--primary-blue);
+            background: #f8fafc;
+            text-decoration: none;
+            border-top: 1px solid #eef2f7;
+        }
+        .notif-footer:hover { background: #eef5fc; color: #0052a3; }
+
+        /* Profile */
+        .profile-btn {
+            display: flex; align-items: center; gap: 10px;
+            background: none; border: none; padding: 0;
+        }
+        .profile-btn::after { display: none !important; }
+        .avatar {
+            width: 42px; height: 42px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #0066cc, #00a3ff);
+            color: #fff;
+            font-weight: 700;
+            display: flex; align-items: center; justify-content: center;
+            box-shadow: 0 4px 10px rgba(0,102,204,.3);
+        }
+        .profile-menu { width: 250px; }
+        .profile-head {
+            padding: 18px;
+            background: linear-gradient(135deg, #0066cc, #0a4f9c);
+            color: #fff;
+        }
+        .profile-menu .dropdown-item {
+            padding: 11px 18px;
+            font-weight: 500;
+            display: flex; align-items: center; gap: 12px;
+        }
+        .profile-menu .dropdown-item i { width: 18px; text-align: center; color: #64748b; }
+        .profile-menu .dropdown-item:hover { background: #f1f5f9; }
+        .profile-menu .logout-item, .profile-menu .logout-item i { color: #dc2626; }
+        .profile-menu .logout-item:hover { background: #fef2f2; }
+
+        /* ================= CARDS / BUTTONS ================= */
+        .stat-card {
+            border: none;
+            border-radius: 16px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.03);
+            transition: transform .2s, box-shadow .2s;
+            background: #fff;
+        }
+        .stat-card:hover { transform: translateY(-4px); box-shadow: 0 8px 25px rgba(0,0,0,0.08); }
+        .icon-box {
+            width: 52px; height: 52px;
+            border-radius: 14px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.5rem;
+        }
+        .btn-primary {
+            background-color: var(--primary-blue);
+            border-color: var(--primary-blue);
+            border-radius: 10px;
+            font-weight: 600;
+            padding: 10px 20px;
+        }
+        .btn-primary:hover { background-color: #0052a3; border-color: #0052a3; }
+
+        /* ================= MOBILE ================= */
+        .sidebar-backdrop {
+            display: none;
+            position: fixed; inset: 0;
+            background: rgba(15,23,42,.5);
+            z-index: 1045;
+        }
+        @media (max-width: 991.98px) {
+            .sidebar { transform: translateX(-100%); width: var(--sidebar-w) !important; }
+            .sidebar.mobile-open { transform: translateX(0); }
+            .sidebar .nav-text, .sidebar .brand-text, .sidebar .menu-label { display: inline !important; }
+            .sidebar .menu-label { display: block !important; }
+            .sidebar-footer { display: block !important; }
+            .main-content, html.sb-collapsed .main-content, .main-content.expanded {
+                margin-left: 0 !important;
+                padding: 14px;
+            }
+            .sidebar-backdrop.show { display: block; }
+            .topbar { padding: 10px 14px; }
+        }
+    </style>
+</head>
+<body>
+
+    {% with current=request.resolver_match.url_name %}
+    <aside class="sidebar" id="sidebar">
+        <div class="brand">
+            <i class="fa-solid fa-water"></i>
+            <span class="brand-text">Project Alluvion</span>
+        </div>
+        <div class="nav flex-column mt-2">
+            <div class="menu-label">Main</div>
+            <a class="nav-link {% if current == 'dashboard' %}active{% endif %}" href="{% url 'dashboard' %}" title="Dashboard">
+                <i class="fa-solid fa-chart-pie"></i><span class="nav-text">Dashboard</span>
+            </a>
+            <a class="nav-link {% if current == 'map' %}active{% endif %}" href="{% url 'map' %}" title="Flood Map">
+                <i class="fa-solid fa-map-location-dot"></i><span class="nav-text">Flood Map</span>
+            </a>
+            <a class="nav-link {% if current == 'notifications' %}active{% endif %}" href="{% url 'notifications' %}" title="Notifications">
+                <i class="fa-regular fa-bell"></i><span class="nav-text">Notifications</span>
+            </a>
+            <a class="nav-link {% if current == 'evaluation' or current == 'prediction_detail' %}active{% endif %}" href="{% url 'evaluation' %}" title="Evaluation">
+                <i class="fa-solid fa-chart-column"></i><span class="nav-text">Evaluation</span>
+            </a>
+            <div class="menu-label">Management</div>
+            <a class="nav-link {% if current == 'events' or current == 'event_edit' %}active{% endif %}" href="{% url 'events' %}" title="Flood Events">
+                <i class="fa-solid fa-cloud-showers-heavy"></i><span class="nav-text">Flood Events</span>
+            </a>
+            <a class="nav-link {% if current == 'outlets' %}active{% endif %}" href="{% url 'outlets' %}" title="Drainage Outlets">
+                <i class="fa-solid fa-location-dot"></i><span class="nav-text">Drainage Outlets</span>
+            </a>
+            <a class="nav-link {% if current == 'upload_image' %}active{% endif %}" href="{% url 'upload_image' %}" title="Upload SAR">
+                <i class="fa-solid fa-cloud-arrow-up"></i><span class="nav-text">Upload SAR</span>
+            </a>
+            <a class="nav-link {% if current == 'weather_records' %}active{% endif %}" href="{% url 'weather_records' %}" title="Weather Data">
+                <i class="fa-solid fa-cloud-sun-rain"></i><span class="nav-text">Weather Data</span>
+            </a>
+            <!-- <a class="nav-link" href="/admin/" title="Database Admin">
+                <i class="fa-solid fa-database"></i><span class="nav-text">Database Admin</span>
+            </a> -->
+        </div>
+        <div class="sidebar-footer">Project Alluvion v1.0</div>
+    </aside>
+    <div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+
+    <div class="main-content" id="mainContent">
+        <div class="topbar">
+            <div class="d-flex align-items-center gap-3">
+                <button class="icon-btn" id="sidebarToggle" type="button" aria-label="Toggle sidebar">
+                    <i class="fa-solid fa-bars"></i>
+                </button>
+                <h5 class="mb-0 fw-bold text-dark">{% block page_title %}Dashboard{% endblock %}</h5>
+            </div>
+            <div class="d-flex align-items-center gap-2 gap-md-3">
+                <span class="text-muted fw-medium d-none d-lg-block me-2">
+                    <i class="fa-regular fa-calendar me-2"></i>{% now "F j, Y" %}
+                </span>
+
+                <div class="dropdown">
+                    <button class="icon-btn dropdown-toggle" id="notifBtn" type="button"
+                            data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
+                        <i class="fa-regular fa-bell"></i>
+                        {% if nav_notifications %}<span class="notif-dot" id="notifDot" data-latest="{{ nav_notif_latest_id }}"></span>{% endif %}
+                    </button>
+                    <div class="dropdown-menu dropdown-menu-end pro-menu notif-menu">
+                        <div class="notif-head">
+                            <span class="fw-bold">Notifications</span>
+                            <span class="badge bg-primary bg-opacity-10 text-primary rounded-pill">Latest 5</span>
+                        </div>
+                        <div class="notif-list">
+                            {% for n in nav_notifications %}
+                            <a href="{% url 'notifications' %}" class="notif-item">
+                                <div class="notif-icon"><i class="fa-solid fa-robot"></i></div>
+                                <div class="flex-grow-1">
+                                    <div class="fw-semibold small">Prediction completed</div>
+                                    <div class="small text-muted">
+                                        {{ n.flood_event.event_name }} &middot; IoU {{ n.iou_score|default:"0.00" }}
+                                    </div>
+                                    <div class="text-muted" style="font-size:.72rem;">
+                                        <i class="fa-regular fa-clock me-1"></i>{{ n.created_at|timesince }} ago
+                                    </div>
+                                </div>
+                            </a>
+                            {% empty %}
+                            <div class="text-center text-muted py-5 small">
+                                <i class="fa-regular fa-bell-slash fs-3 d-block mb-2 opacity-50"></i>
+                                No notifications yet.
+                            </div>
+                            {% endfor %}
+                        </div>
+                        <a href="{% url 'notifications' %}" class="notif-footer">View all notifications</a>
+                    </div>
+                </div>
+
+                <div class="dropdown">
+                    <button class="profile-btn dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <div class="avatar">{{ request.user.username|first|upper }}</div>
+                        <div class="d-none d-md-block text-start lh-sm">
+                            <div class="fw-semibold small text-dark">{{ request.user.username }}</div>
+                            <div class="text-muted" style="font-size:.72rem;">
+                                {% if request.user.is_superuser %}Administrator{% else %}User{% endif %}
+                            </div>
+                        </div>
+                        <i class="fa-solid fa-chevron-down text-muted d-none d-md-block" style="font-size:.7rem;"></i>
+                    </button>
+                    <div class="dropdown-menu dropdown-menu-end pro-menu profile-menu">
+                        <div class="profile-head">
+                            <div class="fw-bold">{{ request.user.username }}</div>
+                            <div class="small opacity-75">{{ request.user.email|default:"No email set" }}</div>
+                        </div>
+                        <div class="py-2">
+                            <a class="dropdown-item" href="{% url 'dashboard' %}"><i class="fa-solid fa-chart-pie"></i>Dashboard</a>
+                            <a class="dropdown-item" href="/admin/"><i class="fa-solid fa-gear"></i>Admin Panel</a>
+                            <div class="dropdown-divider my-1"></div>
+                            <form method="post" action="{% url 'logout' %}" class="m-0">
+                                {% csrf_token %}
+                                <button type="submit" class="dropdown-item logout-item">
+                                    <i class="fa-solid fa-right-from-bracket"></i>Logout
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {% block content %}{% endblock %}
+    </div>
+    {% endwith %}
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+    <script>
+        (function () {
+            const html = document.documentElement;
+            const sidebar = document.getElementById('sidebar');
+            const backdrop = document.getElementById('sidebarBackdrop');
+            const toggleBtn = document.getElementById('sidebarToggle');
+            const isDesktop = () => window.innerWidth >= 992;
+
+            toggleBtn.addEventListener('click', () => {
+                if (isDesktop()) {
+                    html.classList.toggle('sb-collapsed');
+                    try {
+                        localStorage.setItem('alluvion_sidebar',
+                            html.classList.contains('sb-collapsed') ? 'collapsed' : 'expanded');
+                    } catch (e) {}
+                    setTimeout(() => {
+                        window.dispatchEvent(new Event('resize'));
+                        if (window.map && window.map.invalidateSize) window.map.invalidateSize();
+                    }, 320);
+                } else {
+                    sidebar.classList.toggle('mobile-open');
+                    backdrop.classList.toggle('show');
+                }
+            });
+            backdrop.addEventListener('click', () => {
+                sidebar.classList.remove('mobile-open');
+                backdrop.classList.remove('show');
+            });
+
+            window.addEventListener('resize', () => {
+                if (isDesktop()) {
+                    sidebar.classList.remove('mobile-open');
+                    backdrop.classList.remove('show');
+                    try {
+                        html.classList.toggle('sb-collapsed', localStorage.getItem('alluvion_sidebar') === 'collapsed');
+                    } catch (e) {}
+                } else {
+                    html.classList.remove('sb-collapsed');
+                }
+            });
+
+            const dot = document.getElementById('notifDot');
+            const bell = document.getElementById('notifBtn');
+            try {
+                if (dot && localStorage.getItem('alluvion_seen_notif') === dot.dataset.latest) {
+                    dot.style.display = 'none';
+                }
+            } catch (e) {}
+            if (bell && dot) {
+                bell.addEventListener('shown.bs.dropdown', () => {
+                    dot.style.display = 'none';
+                    try { localStorage.setItem('alluvion_seen_notif', dot.dataset.latest); } catch (e) {}
+                });
+            }
+        })();
+    </script>
+
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

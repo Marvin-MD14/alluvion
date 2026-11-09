@@ -1,0 +1,246 @@
+{% extends 'base.html' %}
+{% block page_title %}Prediction Details{% endblock %}
+
+{% block content %}
+{% if messages %}
+    {% for m in messages %}
+    <div class="alert alert-{% if m.tags == 'error' %}danger{% else %}{{ m.tags }}{% endif %} alert-dismissible fade show" role="alert">
+        {{ m }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endfor %}
+{% endif %}
+
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <div>
+        <h5 class="fw-bold mb-0">{{ event.event_name }}</h5>
+        <small class="text-muted">{{ event.date_occurred }} &middot; {{ imagery_label }}</small>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+        {% for s in siblings %}
+        <a href="{% url 'prediction_detail' s.id %}" class="btn btn-sm {% if s.id == prediction.id %}btn-primary{% else %}btn-outline-primary{% endif %}">{{ s.label }}{% if s.iou is not None %} <span class="opacity-75">({{ s.iou|floatformat:2 }})</span>{% endif %}</a>
+        {% endfor %}
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-lg-7">
+        <div class="card stat-card mb-4">
+            <div class="card-body p-0 position-relative" style="overflow: hidden; border-radius: 16px;">
+                <div id="detailMap" style="height: 520px; width: 100%;"></div>
+                <div class="position-absolute bg-white p-3 shadow small" style="top: 12px; right: 12px; z-index: 1000; border-radius: 10px;">
+                    <div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="tHazard" checked><label class="form-check-label" for="tHazard">Hazard map</label></div>
+                    <div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="tExtent"><label class="form-check-label" for="tExtent">Flood extent</label></div>
+                    <div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="tRef"><label class="form-check-label" for="tRef">Reference extent</label></div>
+                    <div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="tOut" checked><label class="form-check-label" for="tOut">Drainage outlets</label></div>
+                </div>
+                <div class="position-absolute bg-white p-3 shadow small" style="bottom: 15px; left: 15px; z-index: 1000; border-radius: 10px;">
+                    <div class="fw-bold mb-1">Legend</div>
+                    <div class="d-flex align-items-center mb-1"><span class="me-2 rounded" style="width:12px;height:12px;background:#fde047"></span>Low hazard</div>
+                    <div class="d-flex align-items-center mb-1"><span class="me-2 rounded" style="width:12px;height:12px;background:#fb923c"></span>Moderate hazard</div>
+                    <div class="d-flex align-items-center mb-1"><span class="me-2 rounded" style="width:12px;height:12px;background:#dc2626"></span>High hazard</div>
+                    <div class="d-flex align-items-center mb-1"><span class="me-2 rounded" style="width:12px;height:12px;background:rgba(239,68,68,.45);border:1px solid #ef4444"></span>Flood extent</div>
+                    <div class="d-flex align-items-center"><span class="me-2 rounded" style="width:12px;height:12px;background:rgba(37,99,235,.35);border:1px solid #2563eb"></span>Reference</div>
+                </div>
+            </div>
+        </div>
+
+        {% if exp.sar %}
+        <div class="card stat-card mb-4"><div class="card-body p-4">
+            <h6 class="fw-bold mb-3 text-uppercase text-muted">Backscatter Histogram &amp; Otsu Threshold</h6>
+            <div style="height: 240px;"><canvas id="histChart"></canvas></div>
+        </div></div>
+        {% endif %}
+
+        {% if exp.time and exp.time.series %}
+        <div class="card stat-card"><div class="card-body p-4">
+            <h6 class="fw-bold mb-3 text-uppercase text-muted">Rainfall &amp; Antecedent Precipitation Index</h6>
+            <div style="height: 240px;"><canvas id="rainChart"></canvas></div>
+        </div></div>
+        {% endif %}
+    </div>
+
+    <div class="col-lg-5">
+        <div class="card stat-card mb-4"><div class="card-body p-4">
+            <h6 class="fw-bold mb-3 text-uppercase text-muted">Outputs</h6>
+            <ul class="list-unstyled mb-0 small">
+                <li class="d-flex justify-content-between mb-2"><span class="text-muted">Classified flood pixels:</span><span class="fw-semibold">{{ prediction.predicted_magnitude_pixels }}</span></li>
+                <li class="d-flex justify-content-between mb-2"><span class="text-muted">Total land (valid) pixels:</span><span class="fw-semibold">{{ prediction.total_land_pixels|default_if_none:"-" }}</span></li>
+                <li class="d-flex justify-content-between mb-2"><span class="text-muted">Flood pixels vs total land:</span><span class="fw-semibold">{{ prediction.flood_percentage|floatformat:2 }}%</span></li>
+                <li class="d-flex justify-content-between mb-2"><span class="text-muted">Predicted flood time:</span><span class="fw-semibold">{{ prediction.predicted_time|date:"Y-m-d H:i" }}</span></li>
+                <li class="d-flex justify-content-between"><span class="text-muted">Actual flood time:</span><span class="fw-semibold">{{ event.actual_flood_time|date:"Y-m-d H:i"|default:"-" }}</span></li>
+            </ul>
+            {% if exp.hazard %}
+            <hr>
+            <div class="row text-center g-2">
+                <div class="col-4"><div class="rounded p-2" style="background:#fef9c3"><div class="fw-bold">{{ exp.hazard.low_px }}</div><small>Low px</small></div></div>
+                <div class="col-4"><div class="rounded p-2" style="background:#ffedd5"><div class="fw-bold">{{ exp.hazard.moderate_px }}</div><small>Moderate px</small></div></div>
+                <div class="col-4"><div class="rounded p-2" style="background:#fee2e2"><div class="fw-bold">{{ exp.hazard.high_px }}</div><small>High px</small></div></div>
+            </div>
+            {% endif %}
+        </div></div>
+
+        <div class="card stat-card mb-4"><div class="card-body p-4">
+            <h6 class="fw-bold mb-3 text-uppercase text-muted">Evaluation Metrics</h6>
+            <ul class="list-unstyled mb-0 small">
+                <li class="d-flex justify-content-between mb-2"><span class="text-muted">IoU:</span><span class="fw-semibold text-primary">{{ prediction.iou_score|default_if_none:"-" }}</span></li>
+                <li class="d-flex justify-content-between mb-2"><span class="text-muted">F1-Score:</span><span class="fw-semibold text-success">{{ prediction.f1_score|default_if_none:"-" }}</span></li>
+                <li class="d-flex justify-content-between mb-2"><span class="text-muted">Precision:</span><span class="fw-semibold">{{ prediction.precision|default_if_none:"-" }}</span></li>
+                <li class="d-flex justify-content-between mb-2"><span class="text-muted">Recall:</span><span class="fw-semibold">{{ prediction.recall|default_if_none:"-" }}</span></li>
+                <li class="d-flex justify-content-between mb-2"><span class="text-muted">Time error (hours):</span><span class="fw-semibold">{{ prediction.time_error_hours|default_if_none:"-" }}</span></li>
+                <li class="d-flex justify-content-between"><span class="text-muted">Actual flood pixels:</span><span class="fw-semibold">{{ exp.metrics.actual_magnitude_pixels|default_if_none:"-" }}</span></li>
+            </ul>
+            {% if prediction.iou_score is None %}
+            <div class="alert alert-warning py-2 px-3 mt-3 mb-0 small border-0">
+                This event has no reference map, so IoU/Precision/Recall/F1 cannot be computed. 
+                <a href="{% url 'event_edit' event.id %}">Upload a reference GeoJSON</a>.
+            </div>
+            {% endif %}
+        </div></div>
+
+        <div class="card stat-card mb-4"><div class="card-body p-4">
+            <h6 class="fw-bold mb-3 text-uppercase text-muted">Explainable AI (XAI)</h6>
+            {% if exp.sar %}
+            <p class="small text-muted mb-2">Method: <strong>{{ exp.method }}</strong></p>
+            <p class="small text-muted mb-2">Threshold: <strong>{{ exp.sar.threshold_db|floatformat:2 }} dB</strong></p>
+            <div class="mb-3">
+                <div class="d-flex justify-content-between small mb-1"><span class="fw-semibold">Class separability</span><span>{{ exp.sar.separability|floatformat:2 }}</span></div>
+                <div class="progress" style="height: 6px;"><div id="sepBar" class="progress-bar bg-primary" role="progressbar" style="width: 0%"></div></div>
+            </div>
+            <div class="small text-muted mb-3">
+                <div>Flood mean (dB): <strong>{{ exp.sar.mean_flood_db|floatformat:2|default:"-" }}</strong></div>
+                <div>Land mean (dB): <strong>{{ exp.sar.mean_land_db|floatformat:2|default:"-" }}</strong></div>
+            </div>
+            <ul class="small ps-3 mb-0">
+                {% for line in exp.summary %}<li class="mb-2">{{ line }}</li>{% endfor %}
+            </ul>
+            {% else %}
+            <div class="small text-muted">This prediction has no XAI data. Please run the prediction again.</div>
+            {% endif %}
+        </div></div>
+
+        {% if exp.time and exp.time.contributions %}
+        <div class="card stat-card mb-4"><div class="card-body p-4">
+            <h6 class="fw-bold mb-3 text-uppercase text-muted">Rainfall Contribution (API)</h6>
+            <p class="small text-muted">Threshold {{ exp.time.threshold_mm }} mm &middot; decay {{ exp.time.decay }} &middot; calibrated from {{ exp.time.calibrated_from }}</p>
+            <table class="table table-sm small mb-0">
+                <thead class="text-muted"><tr><th>Date</th><th>Rain (mm)</th><th>Weight</th><th>Share</th></tr></thead>
+                <tbody>
+                {% for c in exp.time.contributions %}
+                    <tr><td>{{ c.date }}</td><td>{{ c.rain_mm }}</td><td>{{ c.weight }}</td><td>{{ c.share_pct }}%</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div></div>
+        {% endif %}
+
+        <div class="card stat-card"><div class="card-body p-4">
+            <h6 class="fw-bold mb-3">Export</h6>
+            <a href="{% url 'prediction_report' prediction.id %}" target="_blank" class="btn btn-primary w-100 fw-bold mb-2"><i class="fa-solid fa-file-pdf me-2"></i> Digital PDF Report (this imagery)</a>
+            <a href="{% url 'event_report' event.id %}" target="_blank" class="btn btn-outline-primary w-100 fw-bold mb-2"><i class="fa-solid fa-file-pdf me-2"></i> Event Report (best imagery + comparison)</a>
+            
+            <!-- ✅ SWEETALERT DELETE -->
+            <button type="button" onclick="confirmDeletePrediction('{% url 'prediction_delete' prediction.id %}')" class="btn btn-outline-danger w-100">
+                <i class="fa-solid fa-trash me-2"></i> Delete prediction
+            </button>
+        </div></div>
+    </div>
+</div>
+
+{{ extent|json_script:"extentData" }}
+{{ hazard|json_script:"hazardData" }}
+{{ reference|json_script:"refData" }}
+{{ outlets|json_script:"outletData" }}
+{{ exp|json_script:"expData" }}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    const J = id => { try { return JSON.parse(document.getElementById(id).textContent); } catch (e) { return null; } };
+    const extent = J('extentData'), hazard = J('hazardData'), ref = J('refData'), outlets = J('outletData') || [], exp = J('expData') || {};
+
+    // ---------- MAP ----------
+    var map = L.map('detailMap').setView([14.661, 121.096], 15);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { 
+        maxZoom: 19, 
+        attribution: '&copy; OpenStreetMap contributors',
+        referrerPolicy: 'strict-origin-when-cross-origin' // FIX: Para iwas Access Blocked
+    }).addTo(map);
+    
+    const COLORS = { Low: '#fde047', Moderate: '#fb923c', High: '#dc2626' };
+    const hazardLayer = L.geoJSON(hazard, { style: f => ({ color: COLORS[f.properties.level] || '#dc2626', fillColor: COLORS[f.properties.level] || '#dc2626', fillOpacity: 0.8, weight: 0.5 }),
+        onEachFeature: (f, l) => l.bindTooltip((f.properties.level || '') + ' hazard') });
+    const extentLayer = L.geoJSON(extent, { style: { color: '#ef4444', fillColor: '#ef4444', fillOpacity: 0.45, weight: 1 } });
+    const refLayer = L.geoJSON(ref, { style: { color: '#2563eb', fillColor: '#2563eb', fillOpacity: 0.35, weight: 1 } });
+    const outLayer = L.layerGroup();
+    outlets.forEach(o => L.circleMarker([o.latitude, o.longitude], { radius: 6, fillColor: '#0f172a', color: '#fff', weight: 2, fillOpacity: 0.95 })
+        .bindPopup('<strong>' + o.name + '</strong><br>Elevation: ' + o.elevation + ' m').addTo(outLayer));
+    hazardLayer.addTo(map); outLayer.addTo(map);
+
+    const toggles = { tHazard: hazardLayer, tExtent: extentLayer, tRef: refLayer, tOut: outLayer };
+    Object.keys(toggles).forEach(id => document.getElementById(id).addEventListener('change', e => e.target.checked ? map.addLayer(toggles[id]) : map.removeLayer(toggles[id])));
+    const fitTo = (extent && extent.features && extent.features.length) ? extentLayer : (hazard && hazard.features && hazard.features.length ? hazardLayer : null);
+    if (fitTo) { map.fitBounds(fitTo.getBounds().pad(0.15)); }
+
+    // ---------- XAI charts ----------
+    const sepBar = document.getElementById('sepBar');
+    if (sepBar && exp.sar) { sepBar.style.width = Math.round(100 * (exp.sar.separability || 0)) + '%'; }
+
+    if (exp.sar && document.getElementById('histChart')) {
+        const edges = exp.sar.histogram.bin_edges, counts = exp.sar.histogram.counts, thr = exp.sar.threshold_db;
+        const centers = counts.map((_, i) => (edges[i] + edges[i + 1]) / 2);
+        new Chart(document.getElementById('histChart'), {
+            type: 'bar',
+            data: { labels: centers.map(c => c.toFixed(1)), datasets: [{ label: 'Pixels', data: counts,
+                backgroundColor: centers.map(c => c < thr ? 'rgba(37,99,235,.75)' : 'rgba(148,163,184,.8)'), borderWidth: 0, barPercentage: 1, categoryPercentage: 1 }] },
+            options: { responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { display: false }, title: { display: true, text: 'Blue = classified as water (< ' + thr.toFixed(2) + ' dB)' } },
+                scales: { x: { title: { display: true, text: 'Backscatter (dB)' }, ticks: { maxTicksLimit: 10 } }, y: { title: { display: true, text: 'Pixels' } } } }
+        });
+    }
+
+    if (exp.time && exp.time.series && exp.time.series.length && document.getElementById('rainChart')) {
+        const s = exp.time.series;
+        new Chart(document.getElementById('rainChart'), {
+            data: { labels: s.map(r => r.date.slice(5)), datasets: [
+                { type: 'bar', label: 'Daily rainfall (mm)', data: s.map(r => r.rain_mm), backgroundColor: 'rgba(96,165,250,.8)', yAxisID: 'y' },
+                { type: 'line', label: 'API (mm)', data: s.map(r => r.api), borderColor: '#0f172a', backgroundColor: '#0f172a', tension: .3, pointRadius: 3, yAxisID: 'y2' },
+                { type: 'line', label: 'Threshold ' + exp.time.threshold_mm + ' mm', data: s.map(() => exp.time.threshold_mm), borderColor: '#dc2626', borderDash: [6, 4], pointRadius: 0, yAxisID: 'y2' }
+            ] },
+            options: { responsive: true, maintainAspectRatio: false, scales: { y: { title: { display: true, text: 'Rainfall (mm)' } }, y2: { position: 'right', grid: { drawOnChartArea: false }, title: { display: true, text: 'API (mm)' } } } }
+        });
+    }
+
+    // ==========================================
+    // ✅ SWEETALERT2 DELETE CONFIRMATION
+    // ==========================================
+    function confirmDeletePrediction(deleteUrl) {
+        Swal.fire({
+            title: 'Delete Prediction?',
+            text: "This action cannot be undone. All generated flood maps and metrics for this prediction will be permanently removed.",
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#dc3545',
+            cancelButtonColor: '#6b7280',
+            confirmButtonText: '<i class="fa-solid fa-trash me-1"></i> Yes, delete it',
+            cancelButtonText: '<i class="fa-solid fa-times me-1"></i> Cancel',
+            reverseButtons: true
+        }).then((result) => {
+            if (result.isConfirmed) {
+                // Gumawa ng hidden form para ma-submit ang POST request nang may CSRF token
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.action = deleteUrl;
+                
+                const csrfInput = document.createElement('input');
+                csrfInput.type = 'hidden';
+                csrfInput.name = 'csrfmiddlewaretoken';
+                csrfInput.value = '{{ csrf_token }}';
+                
+                form.appendChild(csrfInput);
+                document.body.appendChild(form);
+                form.submit();
+            }
+        });
+    }
+</script>
+{% endblock %}

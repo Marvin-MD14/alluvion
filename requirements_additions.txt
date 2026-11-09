@@ -1,0 +1,8 @@
+# pip install -r requirements_additions.txt
+djangorestframework
+numpy
+scipy
+rasterio
+matplotlib
+reportlab
+Pillow

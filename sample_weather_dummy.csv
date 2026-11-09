@@ -1,0 +1,13 @@
+station_name,date_recorded,rainfall_mm,temperature_c,humidity_percent
+PAGASA Science Garden (DUMMY),2025-09-20,4,26.8,88.1
+PAGASA Science Garden (DUMMY),2025-09-21,0,28.7,86.4
+PAGASA Science Garden (DUMMY),2025-09-22,12,27.0,88.6
+PAGASA Science Garden (DUMMY),2025-09-23,25,25.7,87.2
+PAGASA Science Garden (DUMMY),2025-09-24,48,27.5,92.3
+PAGASA Science Garden (DUMMY),2025-09-25,70,25.4,83.5
+PAGASA Science Garden (DUMMY),2025-09-26,95,25.4,92.6
+PAGASA Science Garden (DUMMY),2025-09-27,160,27.8,78.8
+PAGASA Science Garden (DUMMY),2025-09-28,110,28.9,95.4
+PAGASA Science Garden (DUMMY),2025-09-29,40,27.6,89.1
+PAGASA Science Garden (DUMMY),2025-09-30,15,25.6,78.3
+PAGASA Science Garden (DUMMY),2025-10-01,6,27.1,79.1

@@ -1,0 +1,410 @@
+{% extends 'base.html' %}
+{% block page_title %}Analytics Overview{% endblock %}
+
+{% block content %}
+<style>
+    /* Custom Dashboard Styles */
+    .stat-card-custom {
+        border: none; border-radius: 20px; background: #fff;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.03);
+        transition: all 0.3s ease; position: relative; overflow: hidden;
+    }
+    .stat-card-custom:hover { transform: translateY(-5px); box-shadow: 0 15px 35px rgba(0,0,0,0.08); }
+    .stat-card-custom::before {
+        content: ''; position: absolute; top: 0; left: 0; bottom: 0; width: 5px; border-radius: 20px 0 0 20px;
+    }
+    .stat-card-custom.primary::before { background: #0066cc; }
+    .stat-card-custom.warning::before { background: #ffc107; }
+    .stat-card-custom.success::before { background: #198754; }
+    .stat-card-custom.danger::before { background: #dc3545; }
+
+    .stat-icon-wrapper {
+        width: 54px; height: 54px; border-radius: 16px;
+        display: flex; align-items: center; justify-content: center; font-size: 1.5rem;
+    }
+
+    .chart-card {
+        border: none; border-radius: 20px; background: #fff;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.03);
+        display: flex; flex-direction: column;
+    }
+
+    /* ✅ FIX: Chart Container Wrapper */
+    .chart-container-wrapper {
+        position: relative;
+        height: 280px; /* Fixed height to prevent overflow */
+        width: 100%;
+    }
+    .chart-container-wrapper canvas {
+        position: absolute;
+        top: 0; left: 0; right: 0; bottom: 0;
+        width: 100% !important;
+        height: 100% !important;
+    }
+
+    .table-custom th {
+        font-weight: 600; letter-spacing: 0.5px; padding: 12px 16px; border-bottom: 2px solid #f1f5f9;
+    }
+    .table-custom td {
+        padding: 16px; vertical-align: middle; border-bottom: 1px solid #f1f5f9; font-size: 0.9rem;
+    }
+    .table-custom tr:last-child td { border-bottom: none; }
+    .table-custom tr:hover td { background-color: #f8fafc; }
+
+    .badge-soft-primary { background: rgba(0,102,204,0.1); color: #0066cc; font-weight: 600; padding: 6px 12px; border-radius: 8px;}
+    .badge-soft-success { background: rgba(25,135,84,0.1); color: #198754; font-weight: 600; padding: 6px 12px; border-radius: 8px;}
+    
+    .btn-run {
+        border-radius: 12px; padding: 12px; font-weight: 700; letter-spacing: 0.5px;
+        box-shadow: 0 4px 15px rgba(0,102,204,0.3); transition: all 0.3s ease;
+    }
+    .btn-run:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,102,204,0.4); }
+</style>
+
+<!-- STATS ROW -->
+<div class="row g-4 mb-4">
+    <div class="col-md-3">
+        <div class="stat-card-custom primary p-4">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <p class="text-muted mb-1 fw-semibold text-uppercase" style="font-size: 0.7rem; letter-spacing: 1px;">Flood Events</p>
+                    <h2 class="mb-0 fw-bold text-dark">{{ events.count }}</h2>
+                </div>
+                <div class="stat-icon-wrapper bg-primary bg-opacity-10 text-primary"><i class="fa-solid fa-cloud-showers-heavy"></i></div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card-custom warning p-4">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <p class="text-muted mb-1 fw-semibold text-uppercase" style="font-size: 0.7rem; letter-spacing: 1px;">Predictions</p>
+                    <h2 class="mb-0 fw-bold text-dark">{{ predictions.count }}</h2>
+                </div>
+                <div class="stat-icon-wrapper bg-warning bg-opacity-10 text-warning"><i class="fa-solid fa-robot"></i></div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card-custom success p-4">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <p class="text-muted mb-1 fw-semibold text-uppercase" style="font-size: 0.7rem; letter-spacing: 1px;">Avg. IoU Score</p>
+                    <h2 class="mb-0 fw-bold text-dark">{{ avg_iou }}</h2>
+                </div>
+                <div class="stat-icon-wrapper bg-success bg-opacity-10 text-success"><i class="fa-solid fa-bullseye"></i></div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="stat-card-custom danger p-4">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <p class="text-muted mb-1 fw-semibold text-uppercase" style="font-size: 0.7rem; letter-spacing: 1px;">System Status</p>
+                    <h2 class="mb-0 fw-bold text-success">Online</h2>
+                </div>
+                <div class="stat-icon-wrapper bg-danger bg-opacity-10 text-danger"><i class="fa-solid fa-server"></i></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- CONTROLS & CHARTS ROW -->
+<div class="row g-4 mb-4">
+    <!-- Run AI Prediction Panel -->
+    <div class="col-lg-4">
+        <div class="chart-card h-100 p-4">
+            <h5 class="fw-bold mb-3 d-flex align-items-center">
+                <i class="fa-solid fa-bolt text-primary me-2 fs-4"></i> Run AI Prediction
+            </h5>
+            <p class="text-muted small mb-4">Select a flood event to analyze using the uploaded Sentinel-1 SAR imagery.</p>
+            
+            <label class="form-label fw-bold small text-uppercase text-muted">Select Flood Event</label>
+            <select class="form-select mb-4 shadow-sm border-0 bg-light" id="eventSelect" style="padding: 12px;">
+                <option value="">Choose an event...</option>
+                {% for event in events %}
+                <option value="{{ event.id }}">{{ event.event_name }}</option>
+                {% endfor %}
+            </select>
+            
+            <button class="btn btn-primary w-100 btn-run" onclick="runPrediction()">
+                <i class="fa-solid fa-microchip me-2"></i> Execute Prediction
+            </button>
+            
+            <hr class="my-4 text-muted">
+            
+            <div class="d-flex flex-column gap-3">
+                <a href="{% url 'upload_image' %}" class="text-decoration-none small text-dark fw-semibold d-flex align-items-center hover-primary">
+                    <div class="bg-light rounded p-2 me-3 text-primary"><i class="fa-solid fa-cloud-arrow-up"></i></div>
+                    Upload new SAR image
+                </a>
+                <a href="#" onclick="openReport(); return false;" class="text-decoration-none small text-dark fw-semibold d-flex align-items-center hover-primary">
+                    <div class="bg-light rounded p-2 me-3 text-danger"><i class="fa-solid fa-file-pdf"></i></div>
+                    Generate PDF Report
+                </a>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Line Chart Panel -->
+    <div class="col-lg-8">
+        <div class="chart-card h-100 p-4">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h5 class="fw-bold mb-0">Flood Magnitude Trend</h5>
+                <span class="badge bg-light text-muted border px-3 py-2 rounded-pill">Last 5 Predictions</span>
+            </div>
+            <div class="chart-container-wrapper">
+                <canvas id="floodChart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- NEW CHARTS ROW (Bar & Pie) -->
+<div class="row g-4 mb-4">
+    <!-- Bar Chart: Predictions per Imagery Type -->
+    <div class="col-lg-6">
+        <div class="chart-card h-100 p-4">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h5 class="fw-bold mb-0">Predictions by Imagery Type</h5>
+            </div>
+            <div class="chart-container-wrapper">
+                <canvas id="barChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pie Chart: IoU Score Distribution -->
+    <div class="col-lg-6">
+        <div class="chart-card h-100 p-4">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h5 class="fw-bold mb-0">IoU Score Distribution</h5>
+            </div>
+            <div class="chart-container-wrapper">
+                <canvas id="pieChart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- RECENT PREDICTIONS TABLE -->
+<div class="chart-card p-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h5 class="fw-bold mb-0">Recent Predictions</h5>
+        <a href="{% url 'evaluation' %}" class="btn btn-sm btn-outline-primary rounded-pill px-4">View All</a>
+    </div>
+    
+    <div class="table-responsive">
+        <table class="table table-custom align-middle mb-0">
+            <thead class="bg-light text-muted text-uppercase" style="font-size: 0.75rem;">
+                <tr>
+                    <th class="rounded-start">Event Name</th>
+                    <th>Detected Pixels</th>
+                    <th>% of Land</th>
+                    <th>IoU Score</th>
+                    <th>F1 Score</th>
+                    <th class="rounded-end text-center">Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for p in predictions %}
+                <tr>
+                    <td>
+                        <a href="{% url 'prediction_detail' p.id %}" class="text-decoration-none fw-bold text-dark d-block">
+                            {{ p.flood_event.event_name }}
+                        </a>
+                        <small class="text-muted">{{ p.created_at|date:"M d, Y" }}</small>
+                    </td>
+                    <td class="fw-semibold text-dark">{{ p.predicted_magnitude_pixels|default:"-" }}</td>
+                    <td class="fw-semibold text-dark">{{ p.flood_percentage|floatformat:2|default:"-" }}%</td>
+                    <td><span class="badge-soft-primary">{{ p.iou_score|default:"-" }}</span></td>
+                    <td><span class="badge-soft-success">{{ p.f1_score|default:"-" }}</span></td>
+                    <td class="text-center">
+                        <span class="badge bg-success rounded-pill px-3">Completed</span>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="6" class="text-center text-muted py-5">
+                        <i class="fa-solid fa-inbox fs-1 d-block mb-3 opacity-50"></i>
+                        No predictions found. Run an AI prediction to get started.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    
+    <!-- PAGINATION FOOTER -->
+    <div class="d-flex justify-content-between align-items-center mt-4 pt-3 border-top">
+        <div class="text-muted small">
+            Showing <strong>1</strong> to <strong>{{ predictions|length }}</strong> of <strong>{{ predictions|length }}</strong> entries
+        </div>
+        <nav>
+            <ul class="pagination pagination-sm mb-0">
+                <li class="page-item disabled"><a class="page-link rounded-circle me-1" href="#"><i class="fa-solid fa-chevron-left"></i></a></li>
+                <li class="page-item active"><a class="page-link rounded-circle mx-1" href="#">1</a></li>
+                <li class="page-item disabled"><a class="page-link rounded-circle ms-1" href="#"><i class="fa-solid fa-chevron-right"></i></a></li>
+            </ul>
+        </nav>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // ==========================================
+    // 1. DATA FROM DJANGO
+    // ==========================================
+    const lineLabels = {{ chart_labels|safe }};
+    const lineData = {{ chart_values|safe }};
+    
+    const barLabels = {{ bar_labels|safe }};
+    const barData = {{ bar_values|safe }};
+    
+    const pieData = {{ pie_data|safe }}; // [High, Mid, Low]
+
+    // ==========================================
+    // 2. LINE CHART (Flood Magnitude Trend)
+    // ==========================================
+    const ctxLine = document.getElementById('floodChart').getContext('2d');
+    let gradientLine = ctxLine.createLinearGradient(0, 0, 0, 400);
+    gradientLine.addColorStop(0, 'rgba(0, 102, 204, 0.25)');
+    gradientLine.addColorStop(1, 'rgba(0, 102, 204, 0.0)');
+
+    new Chart(ctxLine, {
+        type: 'line',
+        data: {
+            labels: lineLabels.length > 0 ? lineLabels : ['No Data'],
+            datasets: [{
+                label: 'Flood Pixels Detected',
+                data: lineData.length > 0 ? lineData : [0],
+                borderColor: '#0066cc',
+                backgroundColor: gradientLine,
+                borderWidth: 3,
+                pointBackgroundColor: '#ffffff',
+                pointBorderColor: '#0066cc',
+                pointBorderWidth: 2,
+                pointRadius: 4,
+                pointHoverRadius: 6,
+                fill: true,
+                tension: 0.4
+            }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: { backgroundColor: '#0f172a', padding: 12, cornerRadius: 8, displayColors: false }
+            },
+            scales: {
+                x: { grid: { display: false, drawBorder: false }, ticks: { font: { size: 11, family: 'Inter' }, color: '#64748b' } },
+                y: { grid: { color: '#f1f5f9', drawBorder: false }, ticks: { font: { size: 11, family: 'Inter' }, color: '#64748b' } }
+            }
+        }
+    });
+
+    // ==========================================
+    // 3. BAR CHART (Predictions by Imagery Type)
+    // ==========================================
+    const ctxBar = document.getElementById('barChart').getContext('2d');
+    new Chart(ctxBar, {
+        type: 'bar',
+        data: {
+            labels: barLabels.length > 0 ? barLabels : ['No Data'],
+            datasets: [{
+                label: 'Number of Predictions',
+                data: barData.length > 0 ? barData : [0],
+                backgroundColor: 'rgba(0, 102, 204, 0.8)',
+                borderRadius: 6,
+                barPercentage: 0.6
+            }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: { backgroundColor: '#0f172a', padding: 12, cornerRadius: 8, displayColors: false }
+            },
+            scales: {
+                x: { grid: { display: false, drawBorder: false }, ticks: { font: { size: 10, family: 'Inter' }, color: '#64748b' } },
+                y: { beginAtZero: true, grid: { color: '#f1f5f9', drawBorder: false }, ticks: { stepSize: 1, font: { size: 11, family: 'Inter' }, color: '#64748b' } }
+            }
+        }
+    });
+
+    // ==========================================
+    // 4. PIE CHART (IoU Score Distribution)
+    // ==========================================
+    const ctxPie = document.getElementById('pieChart').getContext('2d');
+    new Chart(ctxPie, {
+        type: 'doughnut', // Doughnut is cleaner than pie
+        data: {
+            labels: ['High IoU (> 0.75)', 'Medium IoU (0.5 - 0.75)', 'Low IoU (< 0.5)'],
+            datasets: [{
+                data: pieData,
+                backgroundColor: ['#198754', '#ffc107', '#dc3545'],
+                borderWidth: 2,
+                borderColor: '#ffffff',
+                hoverOffset: 4
+            }]
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            cutout: '65%',
+            plugins: {
+                legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 8, font: { size: 11, family: 'Inter' } } },
+                tooltip: { backgroundColor: '#0f172a', padding: 12, cornerRadius: 8 }
+            }
+        }
+    });
+
+    // ==========================================
+    // 5. ACTIONS & SWEETALERT
+    // ==========================================
+    function openReport() {
+        const eventId = document.getElementById('eventSelect').value;
+        if (!eventId) {
+            Swal.fire({ icon: 'warning', title: 'Selection Required', text: 'Please select a flood event first.', confirmButtonColor: '#0066cc' });
+            return;
+        }
+        window.open('/reports/event/' + eventId + '/pdf/', '_blank');
+    }
+
+    function runPrediction() {
+        const eventId = document.getElementById('eventSelect').value;
+        if (!eventId) {
+            Swal.fire({ icon: 'warning', title: 'Selection Required', text: 'Please select a flood event first.', confirmButtonColor: '#0066cc' });
+            return;
+        }
+        
+        Swal.fire({ 
+            title: 'Analyzing Satellite Data...', 
+            text: 'Processing all uploaded Sentinel-1 imagery types (Otsu thresholding + hazard classification).', 
+            allowOutsideClick: false, 
+            didOpen: () => { Swal.showLoading(); } 
+        });
+        
+        fetch('/api/run-prediction/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
+            body: JSON.stringify({ event_id: eventId })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.status === 'success') {
+                const n = data.count || 1;
+                const extra = (data.messages && data.messages.length) ? '\n' + data.messages.join('\n') : '';
+                Swal.fire({ 
+                    icon: 'success', 
+                    title: 'Analysis Complete!', 
+                    text: n + ' imagery type(s) processed. Flood extent, hazard map and metrics generated.' + extra, 
+                    confirmButtonColor: '#0066cc' 
+                }).then(() => location.reload());
+            } else {
+                Swal.fire({ icon: 'error', title: 'Error', text: data.message, confirmButtonColor: '#0066cc' });
+            }
+        }).catch(() => Swal.fire({ icon: 'error', title: 'System Error', text: 'Please check the terminal for errors.', confirmButtonColor: '#0066cc' }));
+    }
+</script>
+{% endblock %}

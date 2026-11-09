@@ -1,0 +1,47 @@
+{% extends 'base.html' %}
+{% block page_title %}Notifications{% endblock %}
+
+{% block content %} 
+<div class="card stat-card">
+    <div class="card-body p-4">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h5 class="fw-bold mb-0">All Notifications</h5>
+            <span class="badge bg-primary bg-opacity-10 text-primary px-3 py-2 rounded-pill">{{ items|length }} total</span>
+        </div>
+        <div class="list-group list-group-flush">
+            {% for n in items %}
+            <div class="list-group-item d-flex gap-3 align-items-start px-0 py-3">
+                <div class="bg-primary bg-opacity-10 text-primary rounded p-2 d-flex align-items-center justify-content-center" style="width: 45px; height: 45px;"><i class="fa-solid fa-robot fs-5"></i></div>
+                <div class="flex-grow-1">
+                    <div class="fw-semibold">Prediction completed: {{ n.flood_event.event_name }}</div>
+                    <div class="small text-muted">
+                        Pixels: {{ n.predicted_magnitude_pixels }} ({{ n.flood_percentage }}%) 
+                        &middot; IoU {{ n.iou_score|default:"0.00" }} 
+                        &middot; F1 {{ n.f1_score|default:"0.00" }}
+                    </div>
+                </div>
+                <div class="text-muted small text-nowrap"><i class="fa-regular fa-clock me-1"></i>{{ n.created_at|timesince }} ago</div>
+            </div>
+            {% empty %}
+            <div class="text-center text-muted py-5">
+                <i class="fa-regular fa-bell-slash fs-1 mb-3 d-block opacity-50"></i>
+                <p class="mb-0">No notifications yet.</p>
+            </div>
+            {% endfor %}
+        </div>
+        <!-- PAGINATION FOOTER -->
+        <div class="d-flex justify-content-between align-items-center mt-3">
+            <div class="text-muted small">
+                Showing <strong>1</strong> to <strong>{{ items|length }}</strong> of <strong>{{ items|length }}</strong> entries
+            </div>
+            <nav>
+                <ul class="pagination pagination-sm mb-0">
+                    <li class="page-item disabled"><a class="page-link" href="#">&laquo;</a></li>
+                    <li class="page-item active"><a class="page-link" href="#">1</a></li>
+                    <li class="page-item disabled"><a class="page-link" href="#">&raquo;</a></li>
+                </ul>
+            </nav>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,9 @@
+Django==4.2.30
+djangorestframework==3.14.0
+Pillow==13.0.0
+python-dotenv==1.2.4
+pandas==3.1.1
+rasterio==1.4.4
+geopandas==1.2.0
+scikit-learn==1.0.0
+mysqlclient==2.1.0

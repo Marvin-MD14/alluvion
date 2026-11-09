@@ -1,0 +1,183 @@
+<!-- templates/flood/map.html -->
+{% extends 'base.html' %}
+{% block page_title %}Flood Hazard Map (Tumana, Marikina){% endblock %}
+
+{% block content %}
+<style>
+    #map { height: calc(100vh - 160px); min-height: 480px; width: 100%; border-radius: 16px; z-index: 1; }
+    .info.legend { background: #fff; padding: 15px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); line-height: 1.8; color: #333; font-size: 0.85rem; }
+    .info.legend h4 { margin: 0 0 10px 0; color: #1e293b; font-weight: 700; font-size: 1rem; border-bottom: 1px solid #eee; padding-bottom: 8px; }
+    .legend-item { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+    .legend-color { width: 18px; height: 18px; border-radius: 4px; flex-shrink: 0; }
+    .legend-item small { display: block; color: #64748b; font-size: .7rem; }
+</style>
+
+<div class="row g-4">
+    <div class="col-lg-9">
+        <div class="card stat-card h-100 p-2"><div id="map"></div></div>
+    </div>
+
+    <div class="col-lg-3">
+        <div class="card stat-card mb-4"><div class="card-body p-4">
+            <h6 class="fw-bold mb-3 text-uppercase text-muted" style="font-size: 0.75rem; letter-spacing: 1px;">Prediction</h6>
+            <select class="form-select shadow-sm" id="predSelect" onchange="if (this.value) location.href='?p=' + this.value;">
+                {% for c in choices %}
+                <option value="{{ c.id }}" {% if selected and c.id == selected.id %}selected{% endif %}>{{ c.label }}</option>
+                {% empty %}
+                <option value="">No predictions yet</option>
+                {% endfor %}
+            </select>
+            {% if selected %}
+            <a href="{% url 'prediction_detail' selected.id %}" class="btn btn-sm btn-outline-primary w-100 mt-3"><i class="fa-solid fa-magnifying-glass-chart me-1"></i> Details &amp; XAI</a>
+            {% endif %}
+        </div></div>
+
+        <div class="card stat-card mb-4"><div class="card-body p-4">
+            <h6 class="fw-bold mb-3 text-uppercase text-muted" style="font-size: 0.75rem; letter-spacing: 1px;">Map Layers</h6>
+            <div class="form-check form-switch mb-3"><input class="form-check-input" type="checkbox" id="toggleHazard" checked><label class="form-check-label fw-semibold" for="toggleHazard">Flood Hazard Map</label></div>
+            <div class="form-check form-switch mb-3"><input class="form-check-input" type="checkbox" id="toggleFlood"><label class="form-check-label fw-semibold" for="toggleFlood">Flood Extent Map</label></div>
+            <div class="form-check form-switch mb-3"><input class="form-check-input" type="checkbox" id="toggleRef"><label class="form-check-label fw-semibold" for="toggleRef">Reference Extent</label></div>
+            <div class="form-check form-switch mb-3"><input class="form-check-input" type="checkbox" id="toggleOutlets" checked><label class="form-check-label fw-semibold" for="toggleOutlets">Drainage Outlets</label></div>
+            <div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="toggleBoundary" checked><label class="form-check-label fw-semibold" for="toggleBoundary">Study Area</label></div>
+        </div></div>
+
+        <div class="card stat-card"><div class="card-body p-4">
+            <div class="d-flex align-items-center gap-3 mb-3">
+                <div class="bg-primary bg-opacity-10 text-primary rounded-circle d-flex align-items-center justify-content-center" style="width: 40px; height: 40px;"><i class="fa-solid fa-satellite-dish"></i></div>
+                <div><h6 class="fw-bold mb-0">{% if selected %}{{ imagery_label }}{% else %}Sentinel-1 SAR{% endif %}</h6><small class="text-muted">{% if event %}{{ event.event_name }}{% else %}No prediction{% endif %}</small></div>
+            </div>
+            <ul class="list-unstyled mb-0 small">
+                {% if selected %}
+                <li class="d-flex justify-content-between mb-2"><span class="text-muted">Flood pixels:</span><span class="fw-semibold">{{ selected.predicted_magnitude_pixels }}</span></li>
+                <li class="d-flex justify-content-between mb-2"><span class="text-muted">% of land:</span><span class="fw-semibold">{{ selected.flood_percentage|floatformat:2 }}%</span></li>
+                <li class="d-flex justify-content-between mb-2"><span class="text-muted">IoU:</span><span class="fw-semibold">{{ selected.iou_score|default_if_none:"-" }}</span></li>
+                {% endif %}
+                <li class="d-flex justify-content-between mb-2"><span class="text-muted">Study Area:</span><span class="fw-semibold">Brgy. Tumana, Marikina</span></li>
+                <li class="d-flex justify-content-between"><span class="text-muted">CRS:</span><span class="fw-semibold">EPSG:4326</span></li>
+            </ul>
+            {% if not selected %}
+            <hr class="my-3">
+            <div class="alert alert-info py-2 px-3 mb-0 small border-0 bg-primary bg-opacity-10 text-primary"><i class="fa-solid fa-circle-info me-2"></i> No prediction yet. Go to <a href="{% url 'events' %}">Flood Events</a> and run a prediction.</div>
+            {% endif %}
+        </div></div>
+    </div>
+</div>
+
+{{ extent|json_script:"extentData" }}
+{{ hazard|json_script:"hazardData" }}
+{{ reference|json_script:"refData" }}
+{{ outlets|json_script:"outletData" }}
+{{ legends|json_script:"legendData" }}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const J = id => { try { return JSON.parse(document.getElementById(id).textContent); } catch (e) { return null; } };
+const extentData = J('extentData'), hazardData = J('hazardData'), refData = J('refData');
+const outlets = J('outletData') || [];
+const legends = J('legendData') || [];
+
+// Study area (Brgy. Tumana, approximate bounding box)
+const bounds = [[14.6450, 121.0850], [14.6700, 121.1100]];
+const map = L.map('map', { zoomControl: false, maxBounds: bounds, maxBoundsViscosity: 1.0, minZoom: 14, maxZoom: 18 }).fitBounds(bounds);
+L.control.zoom({ position: 'topright' }).addTo(map);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    referrerPolicy: 'strict-origin-when-cross-origin'
+}).addTo(map);
+
+const tumanaBoundary = L.polygon(bounds, { color: '#0066cc', weight: 2, fillColor: '#0066cc', fillOpacity: 0.05, dashArray: '5, 5' })
+    .addTo(map).bindPopup("<strong class='text-primary'>Study Area</strong><br><span class='small'>Barangay Tumana, Marikina City</span>");
+
+// Build dynamic legend + category layers from admin-defined MapLegend
+const categoryColors = {};
+legends.forEach(l => { if (!(l.category in categoryColors)) categoryColors[l.category] = l.color; });
+
+// Hazard GeoJSON from prediction (fallback to admin legend colors)
+const hazardLayer = L.geoJSON(hazardData, {
+    style: f => {
+        const cat = (f.properties.level || '').toLowerCase();
+        const color = categoryColors[cat] || '#dc2626';
+        return { color, fillColor: color, fillOpacity: 0.8, weight: 0.5 };
+    },
+    onEachFeature: (f, l) => l.bindTooltip((f.properties.level || '') + ' hazard')
+}).addTo(map);
+
+// Optional admin-defined polygon(s) per legend category
+const customLegendLayers = {};
+legends.forEach(l => {
+    if (l.geojson && l.geojson.features && l.geojson.features.length) {
+        customLegendLayers[l.id] = L.geoJSON(l.geojson, {
+            style: { color: l.color, fillColor: l.color, fillOpacity: 0.55, weight: 1 },
+            onEachFeature: (f, layer) => layer.bindPopup(`<strong>${l.name}</strong><br><small>${l.description || ''}</small>`)
+        }).addTo(map);
+    }
+});
+
+const floodLayer = L.geoJSON(extentData, { style: { color: '#ef4444', fillColor: '#ef4444', fillOpacity: 0.45, weight: 1 } })
+    .bindPopup("<strong class='text-danger'>Predicted Flood Extent</strong>");
+const refLayer = L.geoJSON(refData, { style: { color: '#2563eb', fillColor: '#2563eb', fillOpacity: 0.35, weight: 1 } })
+    .bindPopup("<strong class='text-primary'>Reference (actual) extent</strong>");
+
+const outletsLayer = L.layerGroup().addTo(map);
+outlets.forEach(o => L.circleMarker([o.latitude, o.longitude], { radius: 6, fillColor: '#0f172a', color: '#fff', weight: 2, fillOpacity: 0.95 })
+    .addTo(outletsLayer).bindPopup(`<strong class="text-primary d-block mb-1">${o.name}</strong><span class='small text-muted'>Drainage Outlet &middot; ${o.elevation} m</span>`));
+
+const focus = (extentData && extentData.features && extentData.features.length) ? floodLayer
+            : (hazardData && hazardData.features && hazardData.features.length ? hazardLayer : null);
+if (focus) { map.fitBounds(focus.getBounds().pad(0.2)); }
+
+// Dynamic legend from admin MapLegend
+const legend = L.control({ position: 'bottomright' });
+legend.onAdd = function () {
+    const div = L.DomUtil.create('div', 'info legend');
+    let html = '<h4>Map Legend</h4>';
+    legends.forEach(l => {
+        html += `<div class="legend-item">
+                    <div class="legend-color" style="background:${l.color}"></div>
+                    <div><strong>${l.name}</strong>${l.description ? `<small>${l.description}</small>` : ''}</div>
+                 </div>`;
+    });
+    // Static layers
+    html += `<div class="legend-item"><div class="legend-color" style="background:rgba(239,68,68,.45);border:2px solid #ef4444"></div><div><strong>Flood extent</strong></div></div>`;
+    html += `<div class="legend-item"><div class="legend-color" style="background:rgba(37,99,235,.35);border:2px solid #2563eb"></div><div><strong>Reference extent</strong></div></div>`;
+    html += `<div class="legend-item"><div class="legend-color" style="background:#0f172a;border-radius:50%;width:14px;height:14px;margin:2px"></div><div><strong>Drainage outlet</strong></div></div>`;
+    div.innerHTML = html;
+    return div;
+};
+legend.addTo(map);
+
+const bind = (id, layer) => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('change', e => e.target.checked ? map.addLayer(layer) : map.removeLayer(layer));
+};
+bind('toggleHazard', hazardLayer);
+bind('toggleFlood', floodLayer);
+bind('toggleRef', refLayer);
+bind('toggleOutlets', outletsLayer);
+bind('toggleBoundary', tumanaBoundary);
+
+// ==========================================
+// ✅ SWEETALERT2 GLOBAL ACTIONS
+// ==========================================
+// Function para sa delete confirmation (kung sakaling may delete button sa map)
+function confirmDelete(url, title = "Delete Record?") {
+    Swal.fire({
+        title: title,
+        text: "This action cannot be undone.",
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#dc3545',
+        cancelButtonColor: '#6b7280',
+        confirmButtonText: '<i class="fa-solid fa-trash me-1"></i> Yes, delete it',
+        cancelButtonText: '<i class="fa-solid fa-times me-1"></i> Cancel',
+        reverseButtons: true
+    }).then((result) => {
+        if (result.isConfirmed) {
+            window.location.href = url;
+        }
+    });
+}
+</script>
+{% endblock %}
